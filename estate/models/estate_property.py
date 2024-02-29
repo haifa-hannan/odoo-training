@@ -1,6 +1,7 @@
 from datetime import timedelta, datetime
 from odoo import models, fields, api
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
+from odoo.tools.float_utils import float_compare, float_is_zero
 
 class EstateProperty(models.Model):
     _name = "estate.property"
@@ -40,6 +41,11 @@ class EstateProperty(models.Model):
     total_area = fields.Float(string="Total Area (sqm)", compute='_compute_total_area')
     best_price = fields.Float(string="Best Price", compute='_compute_best_price')
 
+    _sql_constraints= [
+        ('strictly_expected_price', 'CHECK(expected_price > 0)', 'A property expected price must be greater than 0'),
+        ('selling_price_positive', 'CHECK(selling_price >= 0)', 'A property selling price must be positive')
+    ]
+
     @api.depends('living_area', 'garden_area')
     def _compute_total_area(self):
         for record in self:
@@ -73,6 +79,14 @@ class EstateProperty(models.Model):
             else:
                 record.state = 'Sold'  
 
+    @api.constrains('expected_price','selling_price')
+    def _check_selling_price(self):
+        for record in self:
+            if not float_is_zero(record.selling_price, precision_digits=2) and not float_is_zero(record.expected_price, precision_digits=2):
+                min_selling_price = record.expected_price * 0.9
+                if float_compare(record.selling_price, min_selling_price, precision_digits=2) == -1:
+                    raise ValidationError("Selling price cannot be lower than 90% of the expected price")
+
 
 class EstatePropertyType(models.Model):
     _name = "estate.property.type"
@@ -80,11 +94,16 @@ class EstatePropertyType(models.Model):
 
     name = fields.Char(string="name", required=True)
 
+    _sql_constraints =[('Property_type_uniqe','UNIQUE(name)','Type name has been used, try another type name'),]
+
 class EstatePropertyTags(models.Model):
     _name = "estate.property.tags"
     _description = "Property Tags"
 
     name = fields.Char(string="name", required=True)
+
+    _sql_constraints =[('Property_tag_uniqe','UNIQUE(name)','Tag name has been used, try another tag name'),]
+
 
 class EstatePropertyOffer(models.Model):
     _name = "estate.property.offer"
@@ -100,6 +119,8 @@ class EstatePropertyOffer(models.Model):
     validity = fields.Integer(string="Validity", default=7)
     create_date = fields.Datetime(string="Create Date", default=fields.Datetime.now(), readonly=True)
     date_deadline = fields.Date(string="Date deadline", compute='_compute_date_deadline', inverse='_inverse_date_deadline')
+
+    _sql_constraints = [('strictly_offer_price','CHECK(price > 0)','An offer price must be greater than 0')]
 
     @api.depends('create_date', 'validity')
     def _compute_date_deadline(self):
