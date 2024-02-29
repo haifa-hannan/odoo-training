@@ -6,6 +6,7 @@ from odoo.tools.float_utils import float_compare, float_is_zero
 class EstateProperty(models.Model):
     _name = "estate.property"
     _description = "Real Estate Property"
+    _order = "id desc"
 
     name = fields.Char(string="Name", required=True)
     description = fields.Text(string="Description")
@@ -40,6 +41,7 @@ class EstateProperty(models.Model):
     offer_ids = fields.One2many('estate.property.offer','property_id', string="Offers")
     total_area = fields.Float(string="Total Area (sqm)", compute='_compute_total_area')
     best_price = fields.Float(string="Best Price", compute='_compute_best_price')
+    property_type_id =fields.Many2one('estate.property.type', string="Property Type")
 
     _sql_constraints= [
         ('strictly_expected_price', 'CHECK(expected_price > 0)', 'A property expected price must be greater than 0'),
@@ -87,27 +89,10 @@ class EstateProperty(models.Model):
                 if float_compare(record.selling_price, min_selling_price, precision_digits=2) == -1:
                     raise ValidationError("Selling price cannot be lower than 90% of the expected price")
 
-
-class EstatePropertyType(models.Model):
-    _name = "estate.property.type"
-    _description = "Real Estate Property Type"
-
-    name = fields.Char(string="name", required=True)
-
-    _sql_constraints =[('Property_type_uniqe','UNIQUE(name)','Type name has been used, try another type name'),]
-
-class EstatePropertyTags(models.Model):
-    _name = "estate.property.tags"
-    _description = "Property Tags"
-
-    name = fields.Char(string="name", required=True)
-
-    _sql_constraints =[('Property_tag_uniqe','UNIQUE(name)','Tag name has been used, try another tag name'),]
-
-
 class EstatePropertyOffer(models.Model):
     _name = "estate.property.offer"
     _description = "Property Offer"
+    _order = "price desc"
 
     price = fields.Float(string="Price", required=True)
     status = fields.Selection([
@@ -163,3 +148,25 @@ class EstatePropertyOffer(models.Model):
     def action_refuse(self):
         for record in self:
             record.status = 'Refused'
+
+class EstatePropertyType(models.Model):
+    _name = "estate.property.type"
+    _description = "Real Estate Property Type"
+    _order = "name"
+
+    name = fields.Char(string="name", required=True)
+    property_ids = fields.One2many('estate.property', 'property_type_id', string="Properties")
+    sequence = fields.Integer('Sequence', default=1)
+
+
+    _sql_constraints =[('Property_type_uniqe','UNIQUE(name)','Type name has been used, try another type name'),]
+
+class EstatePropertyTags(models.Model):
+    _name = "estate.property.tags"
+    _description = "Property Tags"
+    _order = "name"
+
+    name = fields.Char(string="name", required=True)
+    color = fields.Integer(string='Color')
+
+    _sql_constraints =[('Property_tag_uniqe','UNIQUE(name)','Tag name has been used, try another tag name'),]
