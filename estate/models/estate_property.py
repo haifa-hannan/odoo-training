@@ -140,7 +140,7 @@ class EstatePropertyOffer(models.Model):
                 raise UserError("This offer has been refused.")
             else:
                 property = record.property_id  # Dapatkan properti yang terkait dengan penawaran
-                property.action_set_sold()  # Menetapkan properti sebagai "sold"
+                property.state = 'Offer Accepted'
                 property.buyer_id = record.partner_id
                 property.selling_price = record.price
                 record.status = 'Accepted'
