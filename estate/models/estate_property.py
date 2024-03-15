@@ -37,11 +37,10 @@ class EstateProperty(models.Model):
     property_type_id = fields.Many2one('estate.property.type', string="Property Type")
     buyer_id = fields.Many2one('res.partner', string="Buyer", readonly=True)
     salesperson_id = fields.Many2one('res.users', string="Salesperson")
-    tag_ids = fields.Many2many('estate.property.tags', string="Tags")
+    tag_ids = fields.Many2many('estate.property.tags', string="Tags", widget="many2many_tags", options='{"color_field": "color"}')
     offer_ids = fields.One2many('estate.property.offer','property_id', string="Offers")
     total_area = fields.Float(string="Total Area (sqm)", compute='_compute_total_area')
     best_price = fields.Float(string="Best Price", compute='_compute_best_price')
-    property_type_id =fields.Many2one('estate.property.type', string="Property Type")
 
     _sql_constraints= [
         ('strictly_expected_price', 'CHECK(expected_price > 0)', 'A property expected price must be greater than 0'),
@@ -98,12 +97,15 @@ class EstatePropertyOffer(models.Model):
     status = fields.Selection([
         ("Accepted", "Accepted"),
         ("Refused", "Refused")
-    ], string="Status",copy=False)
+    ], string="Status",copy=False, readonly=True)
     partner_id = fields.Many2one('res.partner', string="Partner", required=True)
     property_id = fields.Many2one('estate.property', string="Property")
     validity = fields.Integer(string="Validity", default=7)
     create_date = fields.Datetime(string="Create Date", default=fields.Datetime.now(), readonly=True)
     date_deadline = fields.Date(string="Date deadline", compute='_compute_date_deadline', inverse='_inverse_date_deadline')
+    property_type_id = fields.Many2one(
+        "estate.property.type", related="property_id.property_type_id", string="Property Type", store=True
+    )
 
     _sql_constraints = [('strictly_offer_price','CHECK(price > 0)','An offer price must be greater than 0')]
 
@@ -157,9 +159,24 @@ class EstatePropertyType(models.Model):
     name = fields.Char(string="name", required=True)
     property_ids = fields.One2many('estate.property', 'property_type_id', string="Properties")
     sequence = fields.Integer('Sequence', default=1)
-
+    offer_count = fields.Integer(string="Offers Count", compute="_compute_offer")
+    offer_ids = fields.Many2many("estate.property.offer", string="Offers", compute="_compute_offer")
 
     _sql_constraints =[('Property_type_uniqe','UNIQUE(name)','Type name has been used, try another type name'),]
+
+    def _compute_offer(self):
+        # This solution is quite complex. It is likely that the trainee would have done a search in
+        # a loop.
+        data = self.env["estate.property.offer"].read_group(
+            [("property_id.state", "!=", "canceled"), ("property_type_id", "!=", False)],
+            ["ids:array_agg(id)", "property_type_id"],
+            ["property_type_id"],
+        )
+        mapped_count = {d["property_type_id"][0]: d["property_type_id_count"] for d in data}
+        mapped_ids = {d["property_type_id"][0]: d["ids"] for d in data}
+        for prop_type in self:
+            prop_type.offer_count = mapped_count.get(prop_type.id, 0)
+            prop_type.offer_ids = mapped_ids.get(prop_type.id, [])
 
 class EstatePropertyTags(models.Model):
     _name = "estate.property.tags"
