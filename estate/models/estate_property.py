@@ -36,7 +36,7 @@ class EstateProperty(models.Model):
         ], default='New', required=True, copy=False,string="State", readonly=True)
     property_type_id = fields.Many2one('estate.property.type', string="Property Type")
     buyer_id = fields.Many2one('res.partner', string="Buyer", readonly=True)
-    salesperson_id = fields.Many2one('res.users', string="Salesperson")
+    salesperson_id = fields.Many2one('res.users', string="Salesperson", default=lambda self: self.env.user)
     tag_ids = fields.Many2many('estate.property.tags', string="Tags", widget="many2many_tags", options='{"color_field": "color"}')
     offer_ids = fields.One2many('estate.property.offer','property_id', string="Offers")
     total_area = fields.Float(string="Total Area (sqm)", compute='_compute_total_area')
@@ -87,6 +87,12 @@ class EstateProperty(models.Model):
                 min_selling_price = record.expected_price * 0.9
                 if float_compare(record.selling_price, min_selling_price, precision_digits=2) == -1:
                     raise ValidationError("Selling price cannot be lower than 90% of the expected price")
+                
+    def unlink(self):
+        for record in self:
+            if record.state not in ['New', 'Canceled']:
+                raise ValidationError("You can only delete properties with state 'New' or 'Canceled'.")
+        return super(EstateProperty, self).unlink()
 
 class EstatePropertyOffer(models.Model):
     _name = "estate.property.offer"
@@ -151,6 +157,18 @@ class EstatePropertyOffer(models.Model):
         for record in self:
             record.status = 'Refused'
 
+    @api.model
+    def create(self, vals):
+        if vals.get("property_id") and vals.get("price"):
+            prop = self.env["estate.property"].browse(vals["property_id"])
+            # We check if the offer is higher than the existing offers
+            if prop.offer_ids:
+                max_offer = max(prop.mapped("offer_ids.price"))
+                if float_compare(vals["price"], max_offer, precision_rounding=0.01) <= 0:
+                    raise UserError("The offer must be higher than %.2f" % max_offer)
+            prop.state = "Offer Received"
+        return super().create(vals)
+
 class EstatePropertyType(models.Model):
     _name = "estate.property.type"
     _description = "Real Estate Property Type"
@@ -187,3 +205,8 @@ class EstatePropertyTags(models.Model):
     color = fields.Integer(string='Color')
 
     _sql_constraints =[('Property_tag_uniqe','UNIQUE(name)','Tag name has been used, try another tag name'),]
+
+class ResUser(models.Model):
+    _inherit = "res.users"
+
+    property_ids = fields.One2many("estate.property", "salesperson_id", string="Properties", domain=[("state", "in", ('New', 'Over Received'))])
